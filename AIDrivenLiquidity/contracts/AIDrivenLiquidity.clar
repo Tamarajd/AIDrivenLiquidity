@@ -303,4 +303,101 @@
     )
 )
 
+;; Advanced AI-Driven Dynamic Reward Rebalancing Function
+;; This function implements a sophisticated multi-factor analysis system that automatically
+;; rebalances reward distributions across all liquidity providers in a pool based on
+;; real-time AI assessments, market conditions, and provider behavior patterns.
+(define-public (ai-driven-reward-rebalancing 
+    (pool-id uint) 
+    (market-sentiment-score uint) 
+    (liquidity-efficiency-ratio uint)
+    (impermanent-loss-factor uint))
+    (let
+        (
+            (pool (unwrap! (map-get? liquidity-pools { pool-id: pool-id }) err-not-found))
+            (current-risk (get ai-risk-score pool))
+            (current-volatility (get volatility-index pool))
+            
+            ;; Calculate market condition multiplier (0-200%)
+            (market-multiplier (if (> market-sentiment-score u70)
+                (+ u100 (/ (- market-sentiment-score u70) u3))
+                (- u100 (/ (- u70 market-sentiment-score) u3))))
+            
+            ;; Calculate efficiency bonus (0-50% bonus)
+            (efficiency-bonus (if (> liquidity-efficiency-ratio u80)
+                (/ (- liquidity-efficiency-ratio u80) u4)
+                u0))
+            
+            ;; Calculate impermanent loss compensation (0-100% compensation)
+            (il-compensation (if (> impermanent-loss-factor u20)
+                (min u100 (- impermanent-loss-factor u20))
+                u0))
+            
+            ;; Compute adaptive risk-adjusted rate
+            (risk-adjustment (/ (* (- u100 current-risk) u150) u100))
+            (volatility-adjustment (/ (* (- u100 current-volatility) u150) u100))
+            
+            ;; Calculate new dynamic reward rate
+            (dynamic-rate (/ (* base-reward-rate 
+                (+ market-multiplier efficiency-bonus il-compensation risk-adjustment volatility-adjustment)) 
+                u500))
+            
+            ;; Calculate pool health score (0-100)
+            (pool-health (/ (+ 
+                (- u100 current-risk)
+                (- u100 current-volatility)
+                market-sentiment-score
+                liquidity-efficiency-ratio) u4))
+            
+            ;; Determine if pool needs reward boost
+            (needs-boost (< pool-health u50))
+            (boost-factor (if needs-boost u150 u100))
+            
+            ;; Final adjusted reward rate with boost
+            (final-reward-rate (/ (* dynamic-rate boost-factor) u100))
+        )
+        (asserts! (is-eq tx-sender (var-get ai-oracle)) err-unauthorized)
+        (asserts! (<= market-sentiment-score u100) err-invalid-parameters)
+        (asserts! (<= liquidity-efficiency-ratio u100) err-invalid-parameters)
+        (asserts! (<= impermanent-loss-factor u100) err-invalid-parameters)
+        
+        ;; Store comprehensive metrics for AI learning
+        (map-set pool-metrics
+            { pool-id: pool-id, metric-type: "market-sentiment" }
+            { value: market-sentiment-score, last-updated: block-height })
+        (map-set pool-metrics
+            { pool-id: pool-id, metric-type: "efficiency-ratio" }
+            { value: liquidity-efficiency-ratio, last-updated: block-height })
+        (map-set pool-metrics
+            { pool-id: pool-id, metric-type: "il-factor" }
+            { value: impermanent-loss-factor, last-updated: block-height })
+        (map-set pool-metrics
+            { pool-id: pool-id, metric-type: "pool-health" }
+            { value: pool-health, last-updated: block-height })
+        (map-set pool-metrics
+            { pool-id: pool-id, metric-type: "dynamic-rate" }
+            { value: final-reward-rate, last-updated: block-height })
+        
+        ;; Update pool with new AI-optimized parameters
+        (map-set liquidity-pools
+            { pool-id: pool-id }
+            (merge pool { 
+                ai-risk-score: (if needs-boost 
+                    (max u0 (- current-risk u10)) 
+                    current-risk),
+                volatility-index: current-volatility
+            })
+        )
+        
+        (ok { 
+            new-reward-rate: final-reward-rate,
+            pool-health-score: pool-health,
+            boost-applied: needs-boost,
+            market-multiplier: market-multiplier,
+            efficiency-bonus: efficiency-bonus,
+            il-compensation: il-compensation
+        })
+    )
+)
+
 
